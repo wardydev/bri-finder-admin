@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { Plus, Edit, Trash, X, Image as ImageIcon } from "lucide-react";
+import { Plus, Edit, Trash, X, Image as ImageIcon, Search } from "lucide-react";
 import axios from "../config/axios";
 
 const Modal = ({ isOpen, onClose, children }) => {
@@ -22,6 +22,49 @@ const Modal = ({ isOpen, onClose, children }) => {
           <X size={24} />
         </button>
         {children}
+      </div>
+    </div>
+  );
+};
+
+// --- Delete Confirmation Modal Component ---
+const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm, itemName, itemType = "item" }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black z-50 flex justify-center items-center p-4"
+      style={{
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
+        backdropFilter: "blur(5px)",
+      }}
+    >
+      <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md relative">
+        <div className="text-center">
+          <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+            <Trash className="h-6 w-6 text-red-600" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Hapus {itemType}
+          </h3>
+          <p className="text-sm text-gray-500 mb-6">
+            Apakah Anda yakin ingin menghapus "{itemName}"? Tindakan ini tidak dapat dibatalkan.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+            >
+              Batal
+            </button>
+            <button
+              onClick={onConfirm}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            >
+              Hapus
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -264,8 +307,15 @@ const AtmForm = ({ onSave, onClose, atm, isEdit, getDataAtms }) => {
 // --- Dashboard Page Component ---
 const Home = () => {
   const [atms, setAtms] = useState([]);
+  const [filteredAtms, setFilteredAtms] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAtm, setEditingAtm] = useState(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    isOpen: false,
+    atmId: null,
+    atmName: ""
+  });
 
   const handleAddNew = () => {
     setEditingAtm(null);
@@ -275,6 +325,53 @@ const Home = () => {
   const handleEdit = (atm) => {
     setEditingAtm(atm);
     setIsModalOpen(true);
+  };
+
+  const handleSearch = (e) => {
+    const query = e.target.value.toLowerCase();
+    setSearchQuery(query);
+    
+    if (query.trim() === "") {
+      setFilteredAtms(atms);
+    } else {
+      const filtered = atms.filter((atm) =>
+        atm.name?.toLowerCase().includes(query) ||
+        atm.bank?.toLowerCase().includes(query) ||
+        atm.address?.toLowerCase().includes(query) ||
+        atm.hours?.toLowerCase().includes(query)
+      );
+      setFilteredAtms(filtered);
+    }
+  };
+
+  const handleDeleteClick = (atm) => {
+    setDeleteConfirmation({
+      isOpen: true,
+      atmId: atm.id,
+      atmName: atm.name
+    });
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      await axios.delete(`map-location/${deleteConfirmation.atmId}`);
+      await getDataAtms();
+      setDeleteConfirmation({
+        isOpen: false,
+        atmId: null,
+        atmName: ""
+      });
+    } catch (error) {
+      console.error("Error deleting ATM data:", error);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmation({
+      isOpen: false,
+      atmId: null,
+      atmName: ""
+    });
   };
 
   const handleSave = (atmData) => {
@@ -290,19 +387,11 @@ const Home = () => {
       const response = await axios.get("map-location");
       console.log(response.data, "response.data");
       setAtms(response.data?.data);
+      setFilteredAtms(response.data?.data);
     } catch (error) {
       console.error("Error fetching ATM data:", error);
     }
   };
-
-  const deleteAtm = useCallback(async (id) => {
-    try {
-      await axios.delete(`map-location/${id}`);
-      getDataAtms();
-    } catch (error) {
-      console.error("Error deleting ATM data:", error);
-    }
-  }, []);
 
   useEffect(() => {
     getDataAtms();
@@ -326,6 +415,20 @@ const Home = () => {
         </div>
       </div>
 
+      {/* Search Bar */}
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder="Cari berdasarkan nama, bank, alamat, atau jam operasional..."
+            value={searchQuery}
+            onChange={handleSearch}
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+      </div>
+
       {/* Data Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-left">
@@ -343,8 +446,8 @@ const Home = () => {
             </tr>
           </thead>
           <tbody>
-            {atms?.length ? (
-              atms?.map((atm) => (
+            {filteredAtms?.length ? (
+              filteredAtms?.map((atm) => (
                 <tr
                   key={atm.id}
                   className="border-b border-gray-100 hover:bg-gray-50"
@@ -362,7 +465,7 @@ const Home = () => {
                         <Edit size={16} />
                       </button>
                       <button
-                        onClick={() => deleteAtm(atm.id)}
+                        onClick={() => handleDeleteClick(atm)}
                         className="p-2 text-red-600 bg-red-100 rounded-md hover:bg-red-200"
                       >
                         <Trash size={16} />
@@ -374,7 +477,7 @@ const Home = () => {
             ) : (
               <tr>
                 <td colSpan="5" className="p-4 text-center text-gray-500">
-                  Tidak ada lokasi
+                  {searchQuery ? "Tidak ada lokasi yang sesuai dengan pencarian" : "Tidak ada lokasi"}
                 </td>
               </tr>
             )}
@@ -391,6 +494,14 @@ const Home = () => {
           getDataAtms={getDataAtms}
         />
       </Modal>
+
+      <DeleteConfirmationModal
+        isOpen={deleteConfirmation.isOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        itemName={deleteConfirmation.atmName}
+        itemType="lokasi ATM"
+      />
     </div>
   );
 };
